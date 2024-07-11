@@ -16,7 +16,7 @@ class Game:
         self.game_sound = pygame.mixer.Sound('sounds/Music (1).wav')
         self.game_sound.set_volume(0.5)
         self.impact_sound = pygame.mixer.Sound('sounds/Impact audio.ogg')
-        self.game_sound.set_volume(0.5)
+        self.impact_sound.set_volume(0.5)
 
         self.car1: Optional[Car] = None
         self.car2: Optional[Car] = None
@@ -28,6 +28,7 @@ class Game:
         print(f"Connected to server at {host}:{port}")
         self.player_id: Optional[int] = None
         self.other_player_id: Optional[int] = None
+        self.game_started = False
 
         thread = threading.Thread(target=self.handle_server)
         thread.start()
@@ -48,6 +49,9 @@ class Game:
                     self.other_player_id = 1 if self.player_id == 0 else 0
                     print(f"Assigned player ID: {self.player_id}")
                     self.initialize_cars()
+                elif "game_start" in game_state:
+                    self.game_started = True
+                    print("Game started!")
                 elif "game_state" in game_state and self.car2 is not None:
                     other_player_state = game_state["game_state"]
                     self.car2.deserialize(other_player_state["car"])
@@ -94,7 +98,7 @@ class Game:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN and self.car1 is not None:
+                elif event.type == pygame.KEYDOWN and self.car1 is not None and self.game_started:
                     if event.key == pygame.K_w:
                         self.car1.acceleration = self.car1.max_acceleration
                     elif event.key == pygame.K_s:
@@ -106,14 +110,14 @@ class Game:
                     elif event.key == pygame.K_SPACE:
                         bullet = self.car1.shoot()
                         self.bullets1.append(bullet)
-                elif event.type == pygame.KEYUP and self.car1 is not None:
+                elif event.type == pygame.KEYUP and self.car1 is not None and self.game_started:
                     if event.key in [pygame.K_w, pygame.K_s]:
                         self.car1.acceleration = 0
                     elif event.key in [pygame.K_a, pygame.K_d]:
                         self.car1.steering = 0
 
             # Game logic
-            if self.car1 is not None and self.car2 is not None:
+            if self.car1 is not None and self.car2 is not None and self.game_started:
                 self.car1.update(dt)
                 for bullet in self.bullets1[:]:
                     bullet.update()
@@ -147,8 +151,15 @@ class Game:
                     traceback.print_exc()
                     running = False
 
-                # Drawing
-                self.screen.blit(self.background, (0, 0))
+            # Drawing
+            self.screen.blit(self.background, (0, 0))
+            
+            if not self.game_started:
+                font = pygame.font.Font(None, 36)
+                text = font.render("Waiting for other player...", True, (255, 22, 93))
+                text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
+                self.screen.blit(text, text_rect)
+            else:
                 self.car1.draw(self.screen)
                 self.car2.draw(self.screen)
                 for bullet in self.bullets1:
@@ -162,8 +173,10 @@ class Game:
                 self.car2.health_bar.draw(
                     self.screen, self.car2.position.x, self.car2.position.y - 20
                 )
-                pygame.display.flip()
 
+            pygame.display.flip()
+
+            if self.game_started:
                 if self.car1.health <= 0:
                     print("Player 1 lost!")
                     running = False

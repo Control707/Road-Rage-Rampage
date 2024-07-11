@@ -13,6 +13,8 @@ class GameServer:
         self.game_states = []
         self.player_ids = {}
         self.car_healths = [100, 100]
+        self.game_started = False
+        self.lock = threading.Lock()
 
     def start(self):
         self.server.listen()
@@ -21,11 +23,25 @@ class GameServer:
         while True:
             client, addr = self.server.accept()
             print(f"New connection from {addr}")
-            self.clients.append(client)
-            self.game_states.append(None)
+            
+            with self.lock:
+                if len(self.clients) < 2:
+                    self.clients.append(client)
+                    self.game_states.append(None)
+                    thread = threading.Thread(target=self.handle_client, args=(client,))
+                    thread.start()
+                else:
+                    print(f"Rejected connection from {addr}: game is full")
+                    client.close()
 
-            thread = threading.Thread(target=self.handle_client, args=(client,))
-            thread.start()
+            if len(self.clients) == 2 and not self.game_started:
+                self.start_game()
+
+    def start_game(self):
+        self.game_started = True
+        start_message = {"game_start": True}
+        self.broadcast(start_message)
+        print("Game started!")
 
     def handle_client(self, client):
         player_id = len(self.clients) - 1
@@ -78,10 +94,15 @@ class GameServer:
 
         print(f"Closing connection with client {player_id}")
         client.close()
-        self.clients.remove(client)
-        del self.player_ids[client]
-        if client in self.game_states:
-            self.game_states.remove(self.game_states[self.clients.index(client)])
+        with self.lock:
+            self.clients.remove(client)
+            del self.player_ids[client]
+            if client in self.game_states:
+                self.game_states.remove(self.game_states[self.clients.index(client)])
+        
+        if len(self.clients) < 2:
+            self.game_started = False
+            print("Waiting for players to reconnect...")
 
     def broadcast(self, message):
         for client in self.clients:
