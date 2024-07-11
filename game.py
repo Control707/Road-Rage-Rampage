@@ -10,8 +10,13 @@ from Bullet import Bullet
 class Game:
     def __init__(self, host: str = "localhost", port: int = 12345):
         pygame.init()
-        self.screen = pygame.display.set_mode((800, 600))
+        self.screen = pygame.display.set_mode((1366, 768))
+        self.background = pygame.image.load('images/1.png').convert()
         self.clock = pygame.time.Clock()
+        self.game_sound = pygame.mixer.Sound('sounds/Music (1).wav')
+        self.game_sound.set_volume(0.5)
+        self.impact_sound = pygame.mixer.Sound('sounds/Impact audio.ogg')
+        self.game_sound.set_volume(0.5)
 
         self.car1: Optional[Car] = None
         self.car2: Optional[Car] = None
@@ -79,8 +84,12 @@ class Game:
 
     def run(self) -> None:
         running = True
+        self.game_sound.play()
+
         while running:
             dt = self.clock.tick(60) / 1000
+            if not pygame.mixer.get_busy():
+                self.game_sound.play()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -114,6 +123,7 @@ class Game:
                 if self.player_id is not None and self.other_player_id is not None:
                     for bullet in self.bullets1[:]:
                         if bullet.collides_with(self.car2):
+                            self.impact_sound.play()
                             hit_data = {"hit": {"target": self.other_player_id}}
                             try:
                                 self.client.send(pickle.dumps(hit_data))
@@ -138,7 +148,7 @@ class Game:
                     running = False
 
                 # Drawing
-                self.screen.fill((0, 0, 0))
+                self.screen.blit(self.background, (0, 0))
                 self.car1.draw(self.screen)
                 self.car2.draw(self.screen)
                 for bullet in self.bullets1:

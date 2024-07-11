@@ -6,6 +6,7 @@ class Bullet:
 
         self.angle = angle
         self.speed = 30
+        
 
     def update(self):
         self.position.x += math.cos(math.radians(self.angle)) * self.speed

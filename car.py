@@ -2,6 +2,7 @@ import pygame
 import math
 import Bullet
 from health import HealthBar
+from pygame import mixer
 
 class Car:
     def __init__(self, x, y, angle=0, length=150, max_steering=1, max_acceleration=450.0):
@@ -21,9 +22,16 @@ class Car:
         self.max_health = 100
         self.health = self.max_health
         self.health_bar = HealthBar(self.max_health)
+        
+        self.shooting_sound = mixer.Sound("sounds/Audio Shoot.wav")
+        self.shooting_sound.set_volume(0.5)
 
 
-    def draw(self, screen, image_path="Death Race Car Sticker Fantasy.png"):
+        # self.engine_sound = mixer.Sound("Car acceleration sound.mp3")
+        # self.engine_sound.set_volume(0.5)
+
+
+    def draw(self, screen, image_path="images/Death Race Car Sticker Fantasy.png"):
 
         original_surf = pygame.image.load(image_path).convert_alpha()
 
@@ -45,7 +53,7 @@ class Car:
         screen.blit(surf, rect)
 
     def update(self, dt):
-
+       
         self.velocity += (self.acceleration * dt, 0)
         self.velocity.x = max(-self.max_acceleration, min(self.velocity.x, self.max_acceleration))
 
@@ -62,11 +70,17 @@ class Car:
         else:
             self.angle = 0
 
+        # if self.acceleration>0:
+        #     self.engine_sound.play()
+        # else:
+        #     self.engine_sound.stop()
+
     def shoot(self):
         # Calculate the offset of the bullet's initial position
         offset = pygame.math.Vector2(self.length / 2, 0).rotate(-self.angle)
         # Add the offset to the car1's position to get the bullet's initial position
         bullet_position = self.position + offset
+        self.shooting_sound.play()
         return Bullet.Bullet(bullet_position, self.angle) 
 
 
@@ -76,6 +90,9 @@ class Car:
         if self.health_bar.health < 0:
             self.health_bar.health = 0
         print(f"Car hit! Health: {old_health} -> {self.health_bar.health}")
+
+   
+        
 
 
     def serialize(self):
