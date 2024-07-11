@@ -2,8 +2,6 @@ import socket
 import threading
 import pickle
 import traceback
-from car import Car
-from Bullet import Bullet
 
 class GameServer:
     def __init__(self, host="localhost", port=12345):
