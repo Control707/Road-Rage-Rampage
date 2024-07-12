@@ -2,6 +2,7 @@ import socket
 import threading
 import pickle
 import traceback
+import time
 
 class GameServer:
     def __init__(self, host="localhost", port=12345):
@@ -39,18 +40,37 @@ class GameServer:
 
     def start_game(self):
         self.game_started = True
+        self.reset_game_state()
         start_message = {"game_start": True}
         self.broadcast(start_message)
         print("Game started!")
+
+    def reset_game_state(self):
+        self.car_healths = [100, 100]
+        self.game_states = [None, None]
+        reset_message = {
+            "game_reset": True,
+            "car_healths": self.car_healths
+        }
+        self.broadcast(reset_message)
+        print("Game state reset!")
 
     def handle_client(self, client):
         player_id = len(self.clients) - 1
         self.player_ids[client] = player_id
         try:
-            client.send(pickle.dumps({"player_id": player_id}))
-            print(f"Sent player_id {player_id} to client")
+            initial_message = {
+                "player_id": player_id,
+                "game_started": self.game_started
+            }
+            client.send(pickle.dumps(initial_message))
+            print(f"Sent player_id {player_id} and game_started status to client")
+
+            if self.game_started:
+                self.send_current_game_state(client, player_id)
+
         except Exception as e:
-            print(f"Error sending player_id: {e}")
+            print(f"Error sending initial data: {e}")
             traceback.print_exc()
 
         while True:
@@ -84,8 +104,11 @@ class GameServer:
 
                 if self.car_healths[0] <= 0 or self.car_healths[1] <= 0:
                     print("Game over!")
-                    self.broadcast({"game_over": True})
-                    break
+                    winner = 1 if self.car_healths[0] <= 0 else 0
+                    self.broadcast({"game_over": True, "winner": winner})
+                    self.game_started = False
+                    # Wait a bit before resetting the game
+                    threading.Timer(5.0, self.start_game).start()
 
             except Exception as e:
                 print(f"Error handling client {player_id}: {e}")
@@ -125,6 +148,19 @@ class GameServer:
             except Exception as e:
                 print(f"Error sending game state to other player: {e}")
                 traceback.print_exc()
+
+    def send_current_game_state(self, client, player_id):
+        try:
+            other_player_id = 1 - player_id
+            if self.game_states[other_player_id]:
+                game_state = self.game_states[other_player_id]
+                game_state["car"]["health"] = self.car_healths[other_player_id]
+                game_state["other_car_health"] = self.car_healths[player_id]
+                client.send(pickle.dumps({"game_state": game_state}))
+                print(f"Sent current game state to player {player_id}")
+        except Exception as e:
+            print(f"Error sending current game state to player {player_id}: {e}")
+            traceback.print_exc()
 
 if __name__ == "__main__":
     server = GameServer()
