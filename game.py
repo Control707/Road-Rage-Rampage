@@ -7,7 +7,7 @@ from car import Car
 from Bullet import Bullet
 
 import logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class Game:
     def __init__(self, host: str = "localhost", port: int = 12345):
