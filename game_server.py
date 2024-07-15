@@ -50,7 +50,7 @@ class GameServer:
         try:
             self._send_initial_data(client, player_id)
             while True:
-                data = client.recv(4096)
+                data = client.recv(1024)
                 if not data:
                     break
                 self._process_game_state(pickle.loads(data), player_id)

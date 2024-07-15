@@ -47,14 +47,15 @@ class Game:
         self.bullets2: List[Bullet] = []
         self.game_started = False
         self.waiting_for_player = True
+        self.game_over = False
+        self.winner = None
         logging.info("Game state initialized")
-
 
     def handle_server(self) -> None:
         logging.info("Server handling thread started")
         while True:
             try:
-                data = self.client.recv(4096)
+                data = self.client.recv(1024)
                 if not data:
                     logging.warning("Server closed the connection")
                     break
@@ -83,6 +84,8 @@ class Game:
             logging.info("Received game_start signal")
             self.game_started = True
             self.waiting_for_player = False
+            self.game_over = False
+            self.winner = None
         elif "game_state" in game_state and self.car2:
             logging.debug("Updating other player state")
             self.update_other_player_state(game_state["game_state"])
@@ -92,7 +95,11 @@ class Game:
         elif "game_reset" in game_state:
             logging.info("Resetting game")
             self.reset_game(game_state)
-        logging.debug(f"After processing: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}")
+        elif "game_over" in game_state:
+            logging.info("Game over received")
+            self.game_over = True
+            self.winner = game_state["winner"]
+        logging.debug(f"After processing: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}, game_over={self.game_over}")
 
 
     def set_player_ids(self, player_id: int):
@@ -100,7 +107,6 @@ class Game:
         self.other_player_id = 1 if player_id == 0 else 0
         logging.info(f"Player IDs set: self={self.player_id}, other={self.other_player_id}")
         self.initialize_cars()
-
 
     def reset_game(self, game_state: Dict[str, Any]):
         logging.info("Resetting game state")
@@ -120,7 +126,9 @@ class Game:
         self.initialize_cars()
         self.waiting_for_player = True
         self.game_started = False
-        logging.debug(f"After reset: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}")
+        self.game_over = False
+        self.winner = None
+        logging.debug(f"After reset: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}, game_over={self.game_over}")
 
     def initialize_cars(self):
         screen_width, screen_height = self.screen.get_size()
@@ -156,14 +164,10 @@ class Game:
             if self.handle_events():
                 break
 
-            if self.game_started and self.car1 and self.car2:
+            if self.game_started and self.car1 and self.car2 and not self.game_over:
                 self.update_game_state(dt)
                 self.check_collisions()
                 self.send_game_state()
-                if self.check_game_over():
-                    logging.info("Game over detected")
-                    self.waiting_for_player = True
-                    self.game_started = False
 
             self.draw()
             pygame.display.flip()
@@ -171,7 +175,6 @@ class Game:
         logging.info("Game loop ending")
         pygame.quit()
         self.client.close()
-
 
     def handle_events(self) -> bool:
         for event in pygame.event.get():
@@ -248,26 +251,31 @@ class Game:
         if self.waiting_for_player:
             self.draw_waiting_message()
             logging.debug("Drawing waiting message")
+        elif self.game_over:
+            self.draw_game_over_message()
+            logging.debug("Drawing game over message")
         elif self.game_started:
             self.draw_game_objects()
             logging.debug("Drawing game objects")
+
+    def draw_game_over_message(self):
+        font = pygame.font.Font(None, 72)
+        if self.winner == self.player_id:
+            text = font.render("RAMPAGE!", True, (255, 22, 93))
         else:
-            self.draw_game_over_message()
-            logging.debug("Drawing game over message")
+            text = font.render("You Got RECT!", True, (255, 22, 93))
+        text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
+        self.screen.blit(text, text_rect)
 
-
+        font = pygame.font.Font(None, 36)
+        subtext = font.render("Waiting for new game...", True, (255, 22, 93))
+        subtext_rect = subtext.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2 + 50))
+        self.screen.blit(subtext, subtext_rect)
     def draw_waiting_message(self):
         font = pygame.font.Font(None, 36)
         text = font.render("Waiting for other player...", True, (255, 22, 93))
         text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
         self.screen.blit(text, text_rect)
-
-    def draw_game_over_message(self):
-        font = pygame.font.Font(None, 36)
-        text = font.render("Game Over! Waiting for new game...", True, (255, 22, 93))
-        text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
-        self.screen.blit(text, text_rect)
-
 
 
     def draw_game_objects(self):
