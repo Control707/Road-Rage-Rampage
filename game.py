@@ -14,19 +14,22 @@ class Game:
         self.initialize_pygame()
         self.initialize_network(host, port)
         self.initialize_game_state()
+        self.running = True  
 
     def initialize_pygame(self):
         pygame.init()
         self.screen = pygame.display.set_mode((1366, 768))
+        #1 file
         self.background = pygame.image.load('images/1.png').convert()
         self.clock = pygame.time.Clock()
         self.load_sounds()
 
     def load_sounds(self):
+        #4  files / 2 sounds
         self.game_sound = self.load_sound('sounds/Music (1).wav', 0.5)
         self.impact_sound = self.load_sound('sounds/Impact audio.ogg', 0.5)
         self.win_sound = self.load_sound('sounds/Dota Rampage Sound.mp3', 0.5)
-        self.lose_sound = self.load_sound('sounds/You Got Rect Sound.mp3', 0.5)
+        self.lose_sound = self.load_sound('sounds/Rick and Morty Wrecked sound.mp3', 0.5)
 
     @staticmethod
     def load_sound(path: str, volume: float) -> pygame.mixer.Sound:
@@ -103,7 +106,6 @@ class Game:
             self.winner = game_state["winner"]
         logging.debug(f"After processing: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}, game_over={self.game_over}")
 
-
     def set_player_ids(self, player_id: int):
         self.player_id = player_id
         self.other_player_id = 1 if player_id == 0 else 0
@@ -158,7 +160,7 @@ class Game:
     def run(self) -> None:
         logging.info("Game loop starting")
         self.game_sound.play()
-        while True:
+        while self.running:
             dt = self.clock.tick(60) / 1000
             if not pygame.mixer.get_busy():
                 self.game_sound.play()
@@ -181,10 +183,19 @@ class Game:
     def handle_events(self) -> bool:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.running = False  
+                return True
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                font = pygame.font.Font(None, 36)
+                quit_text = font.render("Quiting the game...", True, (255, 22, 93))
+                quit_text_rect = quit_text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 100))
+                self.screen.blit(quit_text, quit_text_rect) #1 surface
+                self.running = False  # Pressing ESC also stops the game
                 return True
             self.handle_key_events(event)
         return False
 
+        #movement/input
     def handle_key_events(self, event):
         if not self.car1 or not self.game_started:
             return
@@ -239,6 +250,7 @@ class Game:
         except Exception as e:
             logging.error(f"Error sending data: {e}", exc_info=True)
 
+    #winning logic
     def check_game_over(self) -> bool:
         if self.car1.health <= 0:
             print("Player 1 lost!")
@@ -249,7 +261,7 @@ class Game:
         return False
 
     def draw(self):
-        self.screen.blit(self.background, (0, 0))
+        self.screen.blit(self.background, (0, 0)) # 1 surface
         if self.waiting_for_player:
             self.draw_waiting_message()
             logging.debug("Drawing waiting message")
@@ -269,18 +281,30 @@ class Game:
             self.lose_sound.play()
             text = font.render("You Got RECT!", True, (255, 22, 93))
         text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
-        self.screen.blit(text, text_rect)
+        self.screen.blit(text, text_rect) # 1 surface
 
         font = pygame.font.Font(None, 36)
         subtext = font.render("Waiting for new game...", True, (255, 22, 93))
         subtext_rect = subtext.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2 + 50))
-        self.screen.blit(subtext, subtext_rect)
+        self.screen.blit(subtext, subtext_rect) # 1 surface
+        escape_text = font.render("Press Escape to exit at any time", True, (255, 22, 93))
+        escape_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 50, self.screen.get_height() / 2 + 100))
+        self.screen.blit(escape_text, escape_text_rect) #1 surface
+        shoot_text = font.render("Press WASD keys to move and Space to Shoot", True, (255, 22, 93))
+        shoot_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 150))
+        self.screen.blit(shoot_text, shoot_text_rect) #1 surface
+
     def draw_waiting_message(self):
         font = pygame.font.Font(None, 36)
         text = font.render("Waiting for other player...", True, (255, 22, 93))
         text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
-        self.screen.blit(text, text_rect)
-
+        self.screen.blit(text, text_rect) #1 surface
+        escape_text = font.render("Press Escape to exit at any time", True, (255, 22, 93))
+        escape_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 50, self.screen.get_height() / 2 + 50))
+        self.screen.blit(escape_text, escape_text_rect) #1 surface
+        shoot_text = font.render("Press WASD keys to move and Space to shoot", True, (255, 22, 93))
+        shoot_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 100))
+        self.screen.blit(shoot_text, shoot_text_rect) #1 surface
 
     def draw_game_objects(self):
         self.car1.draw(self.screen)

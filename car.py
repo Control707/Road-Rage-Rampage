@@ -49,7 +49,7 @@ class Car:
         elif self.position.y < 0:
             self.position.y = screen_height
 
-        screen.blit(surf, rect)
+        screen.blit(surf, rect) # 1 surface
 
     def update(self, dt):
 
