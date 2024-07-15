@@ -25,6 +25,8 @@ class Game:
     def load_sounds(self):
         self.game_sound = self.load_sound('sounds/Music (1).wav', 0.5)
         self.impact_sound = self.load_sound('sounds/Impact audio.ogg', 0.5)
+        self.win_sound = self.load_sound('sounds/Dota Rampage Sound.mp3', 0.5)
+        self.lose_sound = self.load_sound('sounds/You Got Rect Sound.mp3', 0.5)
 
     @staticmethod
     def load_sound(path: str, volume: float) -> pygame.mixer.Sound:
@@ -261,8 +263,10 @@ class Game:
     def draw_game_over_message(self):
         font = pygame.font.Font(None, 72)
         if self.winner == self.player_id:
+            self.win_sound.play()
             text = font.render("RAMPAGE!", True, (255, 22, 93))
         else:
+            self.lose_sound.play()
             text = font.render("You Got RECT!", True, (255, 22, 93))
         text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
         self.screen.blit(text, text_rect)
