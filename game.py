@@ -10,7 +10,7 @@ import logging
 logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class Game:
-    def __init__(self, host: str = "localhost", port: int = 12345):
+    def __init__(self, host: str = "10.101.131.153", port: int = 12345):
         self.initialize_pygame()
         self.initialize_network(host, port)
         self.initialize_game_state()

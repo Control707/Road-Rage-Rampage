@@ -5,7 +5,7 @@ import traceback
 from typing import List, Dict, Any
 
 class GameServer:
-    def __init__(self, host: str = "localhost", port: int = 12345):
+    def __init__(self, host: str = "10.101.131.153", port: int = 12345):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.bind((host, port))
         self.clients: List[socket.socket] = []
