@@ -10,7 +10,7 @@ import logging
 logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class Game:
-    def __init__(self, host: str = "10.101.131.153", port: int = 12345):
+    def __init__(self, host: str = "158.101.115.232", port: int = 12345): # Server: 158.101.115.232:12345
         self.initialize_pygame()
         self.initialize_network(host, port)
         self.initialize_game_state()
@@ -60,7 +60,7 @@ class Game:
         logging.info("Server handling thread started")
         while True:
             try:
-                data = self.client.recv(1024)
+                data = self.client.recv(4096)
                 if not data:
                     logging.warning("Server closed the connection")
                     break
