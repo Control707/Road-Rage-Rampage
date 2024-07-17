@@ -6,8 +6,17 @@ from typing import Optional, List, Dict, Any
 from car import Car
 from Bullet import Bullet
 
+import logging
+logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
+
 class Game:
-    def __init__(self, host: str = "10.101.131.153", port: int = 12345):
+    def __init__(self, host: str = "158.101.115.232", port: int = 12345): # Server: 158.101.115.232:12345
+        self.initialize_pygame()
+        self.initialize_network(host, port)
+        self.initialize_game_state()
+        self.running = True  
+
+    def initialize_pygame(self):
         pygame.init()
         self.setup_display()
         self.setup_audio()
@@ -16,85 +25,122 @@ class Game:
 
     def setup_display(self):
         self.screen = pygame.display.set_mode((1366, 768))
+        #1 file
         self.background = pygame.image.load('images/1.png').convert()
         self.clock = pygame.time.Clock()
+        self.load_sounds()
 
-    def setup_audio(self):
+    def load_sounds(self):
+        #4  files / 2 sounds
         self.game_sound = self.load_sound('sounds/Music (1).wav', 0.5)
         self.impact_sound = self.load_sound('sounds/Impact audio.ogg', 0.5)
+        self.win_sound = self.load_sound('sounds/Dota Rampage Sound.mp3', 0.5)
+        self.lose_sound = self.load_sound('sounds/Rick and Morty Wrecked sound.mp3', 0.5)
 
-    def load_sound(self, path: str, volume: float) -> pygame.mixer.Sound:
+    @staticmethod
+    def load_sound(path: str, volume: float) -> pygame.mixer.Sound:
         sound = pygame.mixer.Sound(path)
         sound.set_volume(volume)
         return sound
 
-    def setup_game_state(self):
-        self.car1: Optional[Car] = None
-        self.car2: Optional[Car] = None
-        self.bullets1: List[Bullet] = []
-        self.bullets2: List[Bullet] = []
-        self.player_id: Optional[int] = None
-        self.other_player_id: Optional[int] = None
-        self.game_started = False
-
-    def setup_network(self, host: str, port: int):
+    def initialize_network(self, host: str, port: int):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client.connect((host, port))
         print(f"Connected to server at {host}:{port}")
         threading.Thread(target=self.handle_server, daemon=True).start()
 
+    def initialize_game_state(self):
+        self.player_id: Optional[int] = None
+        self.other_player_id: Optional[int] = None
+        self.car1: Optional[Car] = None
+        self.car2: Optional[Car] = None
+        self.bullets1: List[Bullet] = []
+        self.bullets2: List[Bullet] = []
+        self.game_started = False
+        self.waiting_for_player = True
+        self.game_over = False
+        self.winner = None
+        logging.info("Game state initialized")
+
     def handle_server(self) -> None:
+        logging.info("Server handling thread started")
         while True:
             try:
                 data = self.client.recv(1024)
                 if not data:
-                    print("Server closed the connection")
+                    logging.warning("Server closed the connection")
                     break
-
-                game_state = pickle.loads(data)
-                print(f"Received data from server: {game_state}")
-
-                self.process_server_data(game_state)
+                decoded_data = pickle.loads(data)
+                logging.debug(f"Received data from server: {decoded_data}")
+                self.process_server_data(decoded_data)
+            except pickle.UnpicklingError as e:
+                logging.error(f"Error unpickling data: {e}", exc_info=True)
             except Exception as e:
-                print(f"Error in handle_server: {e}")
+                logging.error(f"Error in handle_server: {e}", exc_info=True)
                 break
-
-        print("handle_server thread exiting")
+        logging.info("handle_server thread exiting")
+        self.game_started = False
+        self.waiting_for_player = True
 
     def process_server_data(self, game_state: Dict[str, Any]):
+        logging.debug(f"Processing server data: {game_state}")
         if "player_id" in game_state:
-            self.handle_player_id(game_state["player_id"])
-        elif "game_start" in game_state:
+            logging.info(f"Received player_id: {game_state['player_id']}")
+            self.set_player_ids(game_state["player_id"])
+            if game_state.get("game_started", False):
+                logging.info("Game already in progress, joining...")
+                self.game_started = True
+                self.waiting_for_player = False
+        elif "game_start" in game_state or ("game_state" in game_state and not self.game_started):
+            logging.info("Received game_start signal")
             self.game_started = True
-            print("Game started!")
+            self.waiting_for_player = False
+            self.game_over = False
+            self.winner = None
         elif "game_state" in game_state and self.car2:
+            logging.debug("Updating other player state")
             self.update_other_player_state(game_state["game_state"])
         elif "hit" in game_state:
-            self.handle_hit(game_state["hit"])
+            logging.debug(f"Processing hit: {game_state['hit']}")
+            self.process_hit(game_state["hit"])
+        elif "game_reset" in game_state:
+            logging.info("Resetting game")
+            self.reset_game(game_state)
+        elif "game_over" in game_state:
+            logging.info("Game over received")
+            self.game_over = True
+            self.winner = game_state["winner"]
+        logging.debug(f"After processing: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}, game_over={self.game_over}")
 
-    def handle_player_id(self, player_id: int):
+    def set_player_ids(self, player_id: int):
         self.player_id = player_id
-        self.other_player_id = 1 if self.player_id == 0 else 0
-        print(f"Assigned player ID: {self.player_id}")
+        self.other_player_id = 1 if player_id == 0 else 0
+        logging.info(f"Player IDs set: self={self.player_id}, other={self.other_player_id}")
         self.initialize_cars()
 
-    def update_other_player_state(self, other_player_state: Dict[str, Any]):
-        self.car2.deserialize(other_player_state["car"])
-        self.bullets2 = [Bullet.deserialize(b) for b in other_player_state["bullets"]]
-        if "other_car_health" in other_player_state and self.car1:
-            self.car1.health = other_player_state["other_car_health"]
-            self.car1.health_bar.health = self.car1.health
+    def reset_game(self, game_state: Dict[str, Any]):
+        logging.info("Resetting game state")
+        if "car_healths" in game_state:
+            if self.player_id is not None and self.other_player_id is not None:
+                if self.car1:
+                    self.car1.health = game_state["car_healths"][self.player_id]
+                if self.car2:
+                    self.car2.health = game_state["car_healths"][self.other_player_id]
+            else:
+                logging.warning("Player IDs not set during reset")
+        else:
+            logging.warning("No car_healths in game_state during reset")
+        
+        self.bullets1.clear()
+        self.bullets2.clear()
+        self.initialize_cars()
+        self.waiting_for_player = True
+        self.game_started = False
+        self.game_over = False
+        self.winner = None
+        logging.debug(f"After reset: game_started={self.game_started}, waiting_for_player={self.waiting_for_player}, game_over={self.game_over}")
 
-    def handle_hit(self, hit_data: Dict[str, Any]):
-        target = hit_data["target"]
-        new_health = hit_data["health"]
-        car = self.car1 if target == self.player_id else self.car2
-        if car:
-            car.health = new_health
-            car.health_bar.health = new_health
-            print(f"Player {target} hit! Health: {new_health}")
-
-    def initialize_cars(self) -> None:
+    def initialize_cars(self):
         screen_width, screen_height = self.screen.get_size()
         if self.player_id == 0:
             self.car1 = Car(100, screen_height // 2, angle=0)
@@ -103,16 +149,32 @@ class Game:
             self.car1 = Car(screen_width - 100, screen_height // 2, angle=180)
             self.car2 = Car(100, screen_height // 2, angle=0)
 
-    def run(self) -> None:
-        self.game_sound.play(-1)  # Loop the game sound
+    def update_other_player_state(self, other_player_state: Dict[str, Any]):
+        self.car2.deserialize(other_player_state["car"])
+        self.bullets2 = [Bullet.deserialize(b) for b in other_player_state["bullets"]]
+        if "other_car_health" in other_player_state and self.car1:
+            self.car1.health = other_player_state["other_car_health"]
+            self.car1.health_bar.health = self.car1.health
 
-        while True:
+    def process_hit(self, hit_data: Dict[str, Any]):
+        target, new_health = hit_data["target"], hit_data["health"]
+        car = self.car1 if target == self.player_id else self.car2
+        if car:
+            car.health = new_health
+            car.health_bar.health = new_health
+
+    def run(self) -> None:
+        logging.info("Game loop starting")
+        self.game_sound.play()
+        while self.running:
             dt = self.clock.tick(60) / 1000
+            if not pygame.mixer.get_busy():
+                self.game_sound.play()
 
             if self.handle_events():
                 break
 
-            if self.game_started and self.car1 and self.car2:
+            if self.game_started and self.car1 and self.car2 and not self.game_over:
                 self.update_game_state(dt)
                 self.check_collisions()
                 self.send_game_state()
@@ -120,22 +182,30 @@ class Game:
             self.draw()
             pygame.display.flip()
 
-            if self.check_game_over():
-                break
-
-        print("Game loop exiting")
+        logging.info("Game loop ending")
         pygame.quit()
         self.client.close()
 
     def handle_events(self) -> bool:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.running = False  
                 return True
-            elif event.type in (pygame.KEYDOWN, pygame.KEYUP) and self.car1 and self.game_started:
-                self.handle_car_input(event)
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                font = pygame.font.Font(None, 36)
+                quit_text = font.render("Quiting the game...", True, (255, 22, 93))
+                quit_text_rect = quit_text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 100))
+                self.screen.blit(quit_text, quit_text_rect) #1 surface
+                self.running = False  # Pressing ESC also stops the game
+                return True
+            self.handle_key_events(event)
         return False
 
-    def handle_car_input(self, event: pygame.event.Event):
+        #movement/input
+    def handle_key_events(self, event):
+        if not self.car1 or not self.game_started:
+            return
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_w:
                 self.car1.acceleration = self.car1.max_acceleration
@@ -148,18 +218,16 @@ class Game:
             elif event.key == pygame.K_SPACE:
                 self.bullets1.append(self.car1.shoot())
         elif event.type == pygame.KEYUP:
-            if event.key in (pygame.K_w, pygame.K_s):
+            if event.key in [pygame.K_w, pygame.K_s]:
                 self.car1.acceleration = 0
-            elif event.key in (pygame.K_a, pygame.K_d):
+            elif event.key in [pygame.K_a, pygame.K_d]:
                 self.car1.steering = 0
 
-    def update_game_state(self, dt: float):
+    def update_game_state(self, dt):
         self.car1.update(dt)
-        self.bullets1 = [bullet for bullet in self.bullets1 if self.update_bullet(bullet)]
-
-    def update_bullet(self, bullet: Bullet) -> bool:
-        bullet.update()
-        return not bullet.is_out_of_bounds(self.screen.get_width(), self.screen.get_height())
+        self.bullets1 = [b for b in self.bullets1 if not b.is_out_of_bounds(*self.screen.get_size())]
+        for bullet in self.bullets1:
+            bullet.update()
 
     def check_collisions(self):
         for bullet in self.bullets1[:]:
@@ -180,27 +248,69 @@ class Game:
             }
         }
         self.send_to_server(game_state)
+        logging.debug("Sent game state to server")
 
-    def send_to_server(self, data: Dict[str, Any]):
+    def send_to_server(self, data):
         try:
             self.client.send(pickle.dumps(data))
-            print(f"Sent data: {data}")
         except Exception as e:
-            print(f"Error sending data: {e}")
+            logging.error(f"Error sending data: {e}", exc_info=True)
+
+    #winning logic
+    def check_game_over(self) -> bool:
+        if self.car1.health <= 0:
+            print("Player 1 lost!")
+            return True
+        elif self.car2.health <= 0:
+            print("Player 2 lost!")
+            return True
+        return False
 
     def draw(self):
-        self.screen.blit(self.background, (0, 0))
-
-        if not self.game_started:
+        self.screen.blit(self.background, (0, 0)) # 1 surface
+        if self.waiting_for_player:
             self.draw_waiting_message()
-        else:
+            logging.debug("Drawing waiting message")
+        elif self.game_over:
+            self.draw_game_over_message()
+            logging.debug("Drawing game over message")
+        elif self.game_started:
             self.draw_game_objects()
+            logging.debug("Drawing game objects")
+
+    def draw_game_over_message(self):
+        font = pygame.font.Font(None, 72)
+        if self.winner == self.player_id:
+            self.win_sound.play()
+            text = font.render("RAMPAGE!", True, (255, 22, 93))
+        else:
+            self.lose_sound.play()
+            text = font.render("You Got RECT!", True, (255, 22, 93))
+        text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
+        self.screen.blit(text, text_rect) # 1 surface
+
+        font = pygame.font.Font(None, 36)
+        subtext = font.render("Waiting for new game...", True, (255, 22, 93))
+        subtext_rect = subtext.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2 + 50))
+        self.screen.blit(subtext, subtext_rect) # 1 surface
+        escape_text = font.render("Press Escape to exit at any time", True, (255, 22, 93))
+        escape_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 50, self.screen.get_height() / 2 + 100))
+        self.screen.blit(escape_text, escape_text_rect) #1 surface
+        shoot_text = font.render("Press WASD keys to move and Space to Shoot", True, (255, 22, 93))
+        shoot_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 150))
+        self.screen.blit(shoot_text, shoot_text_rect) #1 surface
 
     def draw_waiting_message(self):
         font = pygame.font.Font(None, 36)
         text = font.render("Waiting for other player...", True, (255, 22, 93))
         text_rect = text.get_rect(center=(self.screen.get_width() / 2, self.screen.get_height() / 2))
-        self.screen.blit(text, text_rect)
+        self.screen.blit(text, text_rect) #1 surface
+        escape_text = font.render("Press Escape to exit at any time", True, (255, 22, 93))
+        escape_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 50, self.screen.get_height() / 2 + 50))
+        self.screen.blit(escape_text, escape_text_rect) #1 surface
+        shoot_text = font.render("Press WASD keys to move and Space to shoot", True, (255, 22, 93))
+        shoot_text_rect = text.get_rect(center=(self.screen.get_width() / 2 - 150, self.screen.get_height() / 2 + 100))
+        self.screen.blit(shoot_text, shoot_text_rect) #1 surface
 
     def draw_game_objects(self):
         self.car1.draw(self.screen)
@@ -210,19 +320,5 @@ class Game:
         self.car1.health_bar.draw(self.screen, self.car1.position.x, self.car1.position.y - 20)
         self.car2.health_bar.draw(self.screen, self.car2.position.x, self.car2.position.y - 20)
 
-    def check_game_over(self) -> bool:
-        if not self.game_started or not self.car1 or not self.car2:
-            return False
-
-        if self.car1.health <= 0:
-            print("Player 1 lost!")
-            return True
-        elif self.car2.health <= 0:
-            print("Player 2 lost!")
-            return True
-
-        return False
-
 if __name__ == "__main__":
-    game = Game()
-    game.run()
+    Game().run()
